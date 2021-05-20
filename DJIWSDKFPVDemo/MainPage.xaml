@@ -1,0 +1,46 @@
+﻿<Page
+    x:Class="Droniada.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Droniada"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="4*"/>
+        </Grid.RowDefinitions>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"></ColumnDefinition>
+                <ColumnDefinition Width="3*"></ColumnDefinition>
+                <ColumnDefinition Width="3*"></ColumnDefinition>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <Button Name="StartMissionButton" Margin="1, 1, 1, 1" Click="StartMission_Click">Start Mission</Button>
+                <Button Name="OpenFolder" Margin="1, 10, 1, 1" Click="OpenFolder_Click">Open File Folder</Button>
+                <Button Margin="1, 10, 1, 1" Click="change_camera">Change Camera</Button>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+
+                <StackPanel>
+                    <TextBlock>Yaw:</TextBlock>
+                    <TextBlock>Altitude:</TextBlock>
+                    <TextBlock>Latitude:</TextBlock>
+                    <TextBlock>Longitude:</TextBlock>
+                </StackPanel>
+
+                <StackPanel>
+                    <TextBlock x:Name="Yaw"></TextBlock>
+                    <TextBlock x:Name="Altitude"></TextBlock>
+                    <TextBlock x:Name="Latitude"></TextBlock>
+                    <TextBlock x:Name="Longitude"></TextBlock>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+        <SwapChainPanel x:Name="swapChainPanel" 
+               Grid.Row="1"></SwapChainPanel>
+    </Grid>
+</Page>
