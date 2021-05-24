@@ -1,5 +1,7 @@
 ﻿using DJI.WindowsSDK;
 using System;
+using System.Collections;
+using System.Threading;
 using Windows.ApplicationModel.Core;
 using Windows.UI.Core;
 
@@ -11,6 +13,9 @@ namespace Droniada
 		bool print_attitude = false;
 		bool print_altitude = false;
 
+		public Client client;
+
+		Queue tcpMessagesQueue = new Queue();
 
 		public Attitude attitude;
 		public double altitude;
@@ -26,17 +31,84 @@ namespace Droniada
 			attitude = new Attitude()
 			{
 				pitch = 0,
-				yaw = 122,
+				yaw = 0,
 				roll = 0
 			};
+
+			if (GlobalValues.MODE == 3 || GlobalValues.MODE == 4)
+			{
+				client = new Client(GlobalValues.HOST, GlobalValues.PORT);
+				client.OnDataRecived += got_data;
+				client.connect();
+				tcpMessagesQueue.Enqueue("y" + attitude.yaw.ToString() + ",");
+				tcpMessagesQueue.Enqueue("l" + gps_location.latitude.ToString() + ",");
+				tcpMessagesQueue.Enqueue("g" + gps_location.longitude.ToString() + ",");
+				tcpMessagesQueue.Enqueue("a" + altitude.ToString()+ ",");
+
+				Thread tcpThread = new Thread(new ThreadStart(this.tcp_loop));
+				tcpThread.IsBackground = true;
+				tcpThread.Start();
+			}
+
+		}
+
+		public void resend_data()
+		{
+			attitude.yaw += 10;
+			altitude += 2;
+			gps_location.latitude += 1;
+			tcpMessagesQueue.Enqueue("y" + attitude.yaw.ToString() + ",");
+			tcpMessagesQueue.Enqueue("l" + gps_location.latitude.ToString() + ",");
+			tcpMessagesQueue.Enqueue("a" + altitude.ToString() + ",");
+		}
+
+		private void got_data(string s)
+		{
+
+		}
+		private void tcp_loop()
+		{
+			while(true)
+			{
+				if(tcpMessagesQueue.Count > 0)
+				{
+					if(client.clientConnected)
+					{
+						System.Diagnostics.Debug.WriteLine("sending!!!");
+						client.sendMessage((string)tcpMessagesQueue.Dequeue());
+					}
+				}
+				else
+				{
+					Thread.Sleep(1);
+				}
+			}
 		}
 
 		public Telemetry()
 		{
+			gps_location.latitude = 52;
+			gps_location.longitude = 17;
+
 			flightControllerHandler = DJISDKManager.Instance.ComponentManager.GetFlightControllerHandler(0, 0);
 			flightControllerHandler.AttitudeChanged += ComponentHandingPage_AttitudeChanged;
 			flightControllerHandler.AircraftLocationChanged += ComponentHandingPage_LocationChanged;
 			flightControllerHandler.AltitudeChanged += ComponentHandingPage_AltitudeChanged;
+
+			if (GlobalValues.MODE == 3 || GlobalValues.MODE == 4)
+			{
+				client = new Client(GlobalValues.HOST, GlobalValues.PORT);
+				client.OnDataRecived += got_data;
+				client.connect();
+				tcpMessagesQueue.Enqueue("y" + attitude.yaw.ToString() + ",");
+				tcpMessagesQueue.Enqueue("l" + gps_location.latitude.ToString() + ",");
+				tcpMessagesQueue.Enqueue("g" + gps_location.longitude.ToString() + ",");
+				tcpMessagesQueue.Enqueue("a" + altitude.ToString() + ",");
+
+				Thread tcpThread = new Thread(new ThreadStart(this.tcp_loop));
+				tcpThread.IsBackground = true;
+				tcpThread.Start();
+			}
 		}
 
 
@@ -48,6 +120,7 @@ namespace Droniada
 				if (value.HasValue)
 				{
 					altitude = value.Value.value;
+					tcpMessagesQueue.Enqueue("a" + altitude.ToString() + ",");
 					if (print_altitude)
 					{
 						System.Diagnostics.Debug.Write("Altitude: ");
@@ -65,6 +138,7 @@ namespace Droniada
 				if (value.HasValue)
 				{
 					attitude = value.Value;
+					tcpMessagesQueue.Enqueue("y" + attitude.yaw.ToString() + ",");
 					if (print_attitude)
 					{
 						System.Diagnostics.Debug.Write("yaw: ");
@@ -86,6 +160,10 @@ namespace Droniada
 				if (value.HasValue)
 				{
 					gps_location = value.Value;
+
+					tcpMessagesQueue.Enqueue("l" + gps_location.latitude.ToString() + ",");
+					tcpMessagesQueue.Enqueue("g" + gps_location.longitude.ToString() + ",");
+
 					if (print_GPS)
 					{
 						System.Diagnostics.Debug.Write("lat: ");

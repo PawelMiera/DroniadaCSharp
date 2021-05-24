@@ -1,15 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Droniada
 {
 	class GlobalValues
 	{
-		public static int MODE = 0;     // 0 - local detection, 1 - save images , 2 - mission , 3 - save smart, 4 - local smart, 5 - smart mission
+		public static int MODE = 3;     // 0 - local detection,  1 - save smart, 2 - smart mission, 3 - python, 4 - pyhon test
 
 		public static int CAMERA = 0;
 
@@ -30,6 +26,10 @@ namespace Droniada
 		public static int WHITE = 0;
 		public static int ORANGE = 1;
 		public static int BROWN = 2;
+
+		public static int PORT = 6969;
+		public static string HOST = "127.0.0.1";
+
 
 
 		public static int CAMERA_WIDTH = 1280;

@@ -1,14 +1,16 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.28307.1500
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31025.194
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Droniada", "DJIWSDKFPVDemo\Droniada.csproj", "{EC28223F-16E8-4BCE-8DBC-B04562514927}"
-	ProjectSection(ProjectDependencies) = postProject
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF} = {5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}
-	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DJIVideoParser", "DJIVideoParser\DJIVideoParser.vcxproj", "{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{511D9B45-BFCB-4EB7-A4F0-AB73E3CC7E15}"
+	ProjectSection(SolutionItems) = preProject
+		DJIWSDKFPVDemo\libcrypto-1_1.dll = DJIWSDKFPVDemo\libcrypto-1_1.dll
+		DJIWSDKFPVDemo\pthread_dll.dll = DJIWSDKFPVDemo\pthread_dll.dll
+		DJIWSDKFPVDemo\swscale-3.dll = DJIWSDKFPVDemo\swscale-3.dll
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -38,18 +40,6 @@ Global
 		{EC28223F-16E8-4BCE-8DBC-B04562514927}.Release|x86.ActiveCfg = Release|x86
 		{EC28223F-16E8-4BCE-8DBC-B04562514927}.Release|x86.Build.0 = Release|x86
 		{EC28223F-16E8-4BCE-8DBC-B04562514927}.Release|x86.Deploy.0 = Release|x86
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Debug|ARM.ActiveCfg = Debug|ARM
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Debug|ARM.Build.0 = Debug|ARM
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Debug|x64.ActiveCfg = Debug|Win32
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Debug|x64.Build.0 = Debug|Win32
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Debug|x86.ActiveCfg = Debug|Win32
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Debug|x86.Build.0 = Debug|Win32
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Release|ARM.ActiveCfg = Release|ARM
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Release|ARM.Build.0 = Release|ARM
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Release|x64.ActiveCfg = Release|x64
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Release|x64.Build.0 = Release|x64
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Release|x86.ActiveCfg = Release|Win32
-		{5F8B4A30-B8D1-46B5-BE32-AEE3C899E3BF}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

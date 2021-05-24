@@ -5,31 +5,45 @@
     xmlns:local="using:Droniada"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:maps="using:Windows.UI.Xaml.Controls.Maps"
     mc:Ignorable="d">
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="4*"/>
         </Grid.RowDefinitions>
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"></ColumnDefinition>
-                <ColumnDefinition Width="3*"></ColumnDefinition>
-                <ColumnDefinition Width="3*"></ColumnDefinition>
+                <ColumnDefinition Width="*"></ColumnDefinition>
+                <ColumnDefinition Width="*"></ColumnDefinition>
+                <ColumnDefinition Width="2*"></ColumnDefinition>
             </Grid.ColumnDefinitions>
-            <StackPanel>
-                <Button Name="StartMissionButton" Margin="1, 1, 1, 1" Click="StartMission_Click">Start Mission</Button>
-                <Button Name="OpenFolder" Margin="1, 10, 1, 1" Click="OpenFolder_Click">Open File Folder</Button>
-                <Button Margin="1, 10, 1, 1" Click="change_camera">Change Camera</Button>
+            <StackPanel Grid.Column="0">
+                <Button Width="170" Margin="1, 5, 1, 1" Background="#CCED1313" Click="Button_Click">GroundStation Mode</Button>
+                <Button Width="170" Margin="1, 5, 1, 1"  Background="#CCFF9505" Click="Button_Click_1">Load Mission</Button>
+                <Button Width="170" Margin="1, 5, 1, 1"  Background="#CCEDF707" Click="Button_Click_2">Upload Mission</Button>
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <StackPanel Grid.Column="1">
+                <Button Width="170" Margin="1, 5, 1, 1"  Background="#CC10771D" Click="Button_Click_3">Start Mission</Button>
+                <Button Width="170" Margin="1, 5, 1, 1" Click="Recenter_Map">Recenter Map</Button>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+                <Button Width="170" Name="OpenFolder" Margin="1, 5, 1, 1" Click="OpenFolder_Click">Open File Folder</Button>
+                <Button Width="170" Margin="1, 5, 1, 1" Click="change_camera">Change Camera</Button>
+            </StackPanel>
+
+            <StackPanel Grid.Column="3" Orientation="Horizontal">
 
                 <StackPanel>
                     <TextBlock>Yaw:</TextBlock>
                     <TextBlock>Altitude:</TextBlock>
                     <TextBlock>Latitude:</TextBlock>
                     <TextBlock>Longitude:</TextBlock>
+                    <TextBlock>Tcp Data:</TextBlock>
                 </StackPanel>
 
                 <StackPanel>
@@ -37,10 +51,101 @@
                     <TextBlock x:Name="Altitude"></TextBlock>
                     <TextBlock x:Name="Latitude"></TextBlock>
                     <TextBlock x:Name="Longitude"></TextBlock>
+                    <TextBlock x:Name="tcpData"></TextBlock>
                 </StackPanel>
             </StackPanel>
         </Grid>
-        <SwapChainPanel x:Name="swapChainPanel" 
-               Grid.Row="1"></SwapChainPanel>
+        <StackPanel Orientation="Horizontal" Grid.Row="1">
+            <SwapChainPanel  x:Name="swapChainPanel"  Width="300"  HorizontalAlignment="Left" Margin="0,0,20,0"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"></ColumnDefinition>
+                    <ColumnDefinition Width="*"></ColumnDefinition>
+                    <ColumnDefinition Width="*"></ColumnDefinition>
+                    <ColumnDefinition Width="*"></ColumnDefinition>
+                    <ColumnDefinition Width="*"></ColumnDefinition>
+                </Grid.ColumnDefinitions>
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"></RowDefinition>
+                    <RowDefinition Height="*"></RowDefinition>
+                    <RowDefinition Height="*"></RowDefinition>
+                    <RowDefinition Height="*"></RowDefinition>
+                </Grid.RowDefinitions>
+
+                <TextBlock Margin="5,0,5,0" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">Latitude:</TextBlock>
+                <TextBlock Margin="5,0,5,0" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">Longitude:</TextBlock>
+                <TextBlock Margin="5,0,5,0" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center">Altitude:</TextBlock>
+                <TextBlock Margin="5,0,5,0" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center">Speed:</TextBlock>
+
+                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="MapLat" VerticalAlignment="Center"></TextBlock>
+                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="MapLon" VerticalAlignment="Center"></TextBlock>
+                <TextBox Width="170" x:Name="altitudeTextBox" Grid.Row="2" Grid.Column="1" Text="15" MaxLength="3" TextAlignment="Center" VerticalAlignment="Center" TextChanged="TextBox_TextChanged" ></TextBox>
+                <TextBox Width="170" x:Name="speedTextBox" Grid.Row="3" Grid.Column="1" Text="10" MaxLength="2" TextAlignment="Center" VerticalAlignment="Center" TextChanged="SpeedTextBox_TextChanged"></TextBox>
+                <Button Width="120" Grid.Column="4" Grid.Row="2" Margin="5,0,5,0" Click="Init_Mission_Click" HorizontalAlignment="Center" VerticalAlignment="Center">Init Mission</Button>
+                <Button Width="120" Grid.Column="4" Grid.Row="3" Margin="5,0,5,0" Click="Add_Waypoint_Click" HorizontalAlignment="Center" VerticalAlignment="Center">Add Waypoint</Button>
+
+                <Button Width="120" Grid.Column="4" Grid.Row="1" Margin="0,0,0,4.2" Click="ResendData_Click" HorizontalAlignment="Center" VerticalAlignment="Bottom">ResendData</Button>
+
+                <TextBlock Grid.Row="0" Grid.Column="2"  Margin="5,0,5,0" VerticalAlignment="Center">Heading:</TextBlock>
+                <TextBlock Grid.Row="1" Grid.Column="2"  Margin="5,0,5,0" VerticalAlignment="Center">Finished Action:</TextBlock>
+                <TextBlock Grid.Row="2" Grid.Column="2"  Margin="5,0,5,0" VerticalAlignment="Center">Heading Mode:</TextBlock>
+                <TextBlock Grid.Row="3" Grid.Column="2"  Margin="5,0,5,0" VerticalAlignment="Center">W. Point turn:</TextBlock>
+
+                <TextBox x:Name="headingTextBox" Grid.Row="0" Grid.Column="3" Text="0" MaxLength="3" TextAlignment="Center" VerticalAlignment="Center" TextChanged="HeadingTextBox_TextChanged"></TextBox>
+
+                <ComboBox x:Name="finishedCombo" Width="170" HorizontalAlignment="Center" Grid.Column="3" Grid.Row="1" VerticalAlignment="Stretch">
+                    <ComboBoxItem>No Action</ComboBoxItem>
+                    <ComboBoxItem IsSelected="True">Go Home</ComboBoxItem>
+                    <ComboBoxItem>Auto Land</ComboBoxItem>
+                    <ComboBoxItem>Go First</ComboBoxItem>
+                    <ComboBoxItem>Continue</ComboBoxItem>
+                </ComboBox>
+
+                <ComboBox Width="170" x:Name="headingCombo" HorizontalAlignment="Center" Grid.Column="3" Grid.Row="2">
+                    <ComboBoxItem Tag="0">Auto</ComboBoxItem>
+                    <ComboBoxItem Tag="3">Waypoint heading</ComboBoxItem>
+                    <ComboBoxItem IsSelected="True" Tag="1">Initial direction</ComboBoxItem>
+                </ComboBox>
+
+                <ComboBox Width="170" x:Name="turnCombo" HorizontalAlignment="Center" Grid.Column="3" Grid.Row="3">
+                    <ComboBoxItem IsSelected="True">Clockwise</ComboBoxItem>
+                    <ComboBoxItem>Counter_Clockwise</ComboBoxItem>
+                </ComboBox>
+
+            </Grid>
+
+        </StackPanel>
+        <maps:MapControl 
+                Grid.Row="2"
+                ZoomInteractionMode="GestureAndControl"
+                TiltInteractionMode="GestureAndControl"
+                x:Name="WaypointMap"
+                ZoomLevel="18"
+                Height="auto"
+                MapServiceToken="3J6wlYn3UrUti8DPwRGV~xz3PYAHBv8quLQGTiGP1ag~AnswRKC8T4MiVnjzf10dmwpGhHVcQOE-koYk5uR0RIK4WNoof6f603ZniMKzKKGT" MapTapped="WaypointMap_MapTapped">
+
+            <maps:MapItemsControl x:Name="mapItems">
+                <maps:MapItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <Image Source="{Binding ImageSourceUri}" 
+                                       maps:MapControl.Location="{Binding Location}">
+                                <Image.RenderTransform>
+                                    <TransformGroup>
+                                        <RotateTransform Angle="{Binding Rotate.Angle}"
+                                                             CenterX="{Binding Rotate.CenterX}"
+                                                             CenterY="{Binding Rotate.CenterY}"/>
+                                        <TranslateTransform X="{Binding Translate.X}"
+                                                                Y="{Binding Translate.Y}"/>
+                                    </TransformGroup>
+                                </Image.RenderTransform>
+                            </Image>
+                        </StackPanel>
+                    </DataTemplate>
+                </maps:MapItemsControl.ItemTemplate>
+            </maps:MapItemsControl>
+        </maps:MapControl>
+
     </Grid>
 </Page>

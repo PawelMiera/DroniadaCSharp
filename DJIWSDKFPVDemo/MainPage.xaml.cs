@@ -1,7 +1,6 @@
 ﻿using System;
 using Windows.UI.Xaml.Controls;
 using DJI.WindowsSDK;
-using DJIVideoParser;
 using Windows.UI.Core;
 using Emgu.CV;
 using Emgu.CV.Structure;
@@ -17,6 +16,11 @@ using Windows.System;
 using System.Windows.Input;
 using DJIUWPSample.Commands;
 using Windows.UI.Popups;
+using Windows.UI.Xaml.Controls.Maps;
+using Windows.Devices.Geolocation;
+using Windows.Storage.Streams;
+using Windows.UI.Xaml.Media;
+
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -27,22 +31,15 @@ namespace Droniada
 	/// </summary>
 	public sealed partial class MainPage : Page
 	{
-
-		private VideoCapture _capture;
+		private VideoCapture _capture = null;
 		int camera_number = GlobalValues.CAMERA;
 		Thread mainThread;
 		bool pauseThread = false;
 
-		private Parser videoParser;
 		private Gimbal gimbal;
-		private Telemetry telemetry;
+		private Telemetry telemetry = null;
 		private Detector detector;
 		PositionCalculator positionCalculator = null;
-
-		private byte[] image_data;
-		private int image_width = 1440;
-		private int image_height = 1080;
-		private bool new_image = false;
 
 		StorageFolder storageFolder;
 		StorageFolder currentFolder;
@@ -74,6 +71,26 @@ namespace Droniada
 				setup();
 			}
 
+			
+
+			System.Timers.Timer myTimer = new System.Timers.Timer();
+			myTimer.Elapsed += new System.Timers.ElapsedEventHandler(DisplayValues);
+			myTimer.Interval = 500;
+			myTimer.Start();
+
+			mainThread = new Thread(new ThreadStart(this.main_loop));
+			mainThread.IsBackground = true;
+			mainThread.Start();
+
+			setup_map();
+		}
+
+		void tcpDataReceived(string msg)
+		{
+			_ = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+			{
+				tcpData.Text = msg;
+			});
 		}
 
 		private void setup()
@@ -89,7 +106,7 @@ namespace Droniada
 				telemetry = new Telemetry(true);
 			}
 
-			if (mode == 3 || mode == 4 || mode == 5)
+			if (mode == 2 || mode == 1)
 			{
 				_capture = new VideoCapture(camera_number, VideoCapture.API.Msmf);
 				_capture.SetCaptureProperty(CapProp.FrameWidth, 1280);
@@ -101,15 +118,10 @@ namespace Droniada
 			positionCalculator = new PositionCalculator(telemetry);
 			positionCalculator.update_current_location();
 
-
-			System.Timers.Timer myTimer = new System.Timers.Timer();
-			myTimer.Elapsed += new System.Timers.ElapsedEventHandler(DisplayValues);
-			myTimer.Interval = 500;
-			myTimer.Start();
-
-			mainThread = new Thread(new ThreadStart(this.main_loop));
-			mainThread.IsBackground = true;
-			mainThread.Start();
+			if(mode == 3 || mode == 4)
+			{
+				telemetry.client.OnDataRecived += tcpDataReceived;
+			}
 		}
 
 		private void main_loop()
@@ -126,24 +138,10 @@ namespace Droniada
 			{
 				mode_2();
 			}
-			else if (mode == 3)
-			{
-				mode_3();
-			}
-			else if (mode == 4)
-			{
-				mode_3();
-			}
-			else if (mode == 5)
-			{
-				mode_5();
-			}
-
-
 		}
 
 
-		private void mode_5()
+		private void mode_2()
 		{
 			int ind = 0;
 			long milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
@@ -155,133 +153,145 @@ namespace Droniada
 
 			while (true)
 			{
-				Mat mat = _capture.QueryFrame();
-
-				Image<Bgr, Byte> img_bgr = mat.ToImage<Bgr, Byte>();
-
-				if (telemetry.altitude >= GlobalValues.MIN_ALTITUDE)
+				if (pauseThread)
 				{
+					Thread.Sleep(1);
+					continue;
+				}
+				if (_capture != null)
+				{
+					Mat mat = _capture.QueryFrame();
 
-					List<Detection> detections = detector.detect(img_bgr);
+					Image<Bgr, Byte> img_bgr = mat.ToImage<Bgr, Byte>();
 
-					positionCalculator.update_current_location();
-					positionCalculator.update_meters_per_pixel();
-					positionCalculator.calculate_max_meters_area();
-					positionCalculator.calculate_extreme_points();
-
-					bool update_detections_file = false;
-
-					foreach (Detection d in detections)
+					if (telemetry.altitude >= GlobalValues.MIN_ALTITUDE)
 					{
-						GeodesicLocation location = positionCalculator.calculate_point_lat_long(d.mid);
-						d.update_lat_lon(location);
-						d.area_m = positionCalculator.calculate_area_in_meters_2(d.area);
-						d.draw_detection(img_bgr);
 
-						foreach (Detection conf_d in confirmed_detections)
+						List<Detection> detections = detector.detect(img_bgr);
+
+						positionCalculator.update_current_location();
+						positionCalculator.update_meters_per_pixel();
+						positionCalculator.calculate_max_meters_area();
+						positionCalculator.calculate_extreme_points();
+
+						bool update_detections_file = false;
+
+						foreach (Detection d in detections)
 						{
-							if (d.check_detection(conf_d))
+							GeodesicLocation location = positionCalculator.calculate_point_lat_long(d.mid);
+							d.update_lat_lon(location);
+							d.area_m = positionCalculator.calculate_area_in_meters_2(d.area);
+							d.draw_detection(img_bgr);
+
+							foreach (Detection conf_d in confirmed_detections)
 							{
-								conf_d.merge_detecions(d);
-								conf_d.last_seen = time_index;
-								d.to_delete = true;
-								update_detections_file = true;
-								break;
+								if (d.check_detection(conf_d))
+								{
+									conf_d.merge_detecions(d);
+									conf_d.last_seen = time_index;
+									d.to_delete = true;
+									update_detections_file = true;
+									break;
+								}
 							}
+							if (d.to_delete)
+							{
+								continue;
+							}
+
+							foreach (Detection all_d in all_detections)
+							{
+								if (d.check_detection(all_d))
+								{
+									all_d.merge_detecions(d);
+									all_d.last_seen = time_index;
+									d.to_delete = true;
+									break;
+								}
+							}
+							if (!d.to_delete)
+							{
+								d.last_seen = time_index;
+							}
+
 						}
-						if (d.to_delete)
-						{
-							continue;
-						}
+
+						detections.RemoveAll(d => d.to_delete);
+
+						all_detections.AddRange(detections);
 
 						foreach (Detection all_d in all_detections)
 						{
-							if (d.check_detection(all_d))
+							if (all_d.seen_times > 8)
 							{
-								all_d.merge_detecions(d);
-								all_d.last_seen = time_index;
-								d.to_delete = true;
-								break;
+								all_d.detection_id = confirmed_detection_id;
+
+								confirmed_detection_id++;
+
+								String filename = Path.Combine(detectionsFolder.Path + @"\" + all_d.detection_id.ToString() + ".jpg");
+
+								all_d.filename = filename;
+
+								Task t = write_to_file(detectionsFile, all_d.getString());
+
+								save_frame_crop(img_bgr, all_d.rectangle, filename);
+								confirmed_detections.Add(all_d);
+								all_d.to_delete = true;
+							}
+							else if (all_d.seen_times > 4)
+							{
+								if (time_index - all_d.last_seen > 800)
+									all_d.to_delete = true;
+							}
+							else
+							{
+								if (time_index - all_d.last_seen > 20)
+									all_d.to_delete = true;
 							}
 						}
-					}
 
-					detections.RemoveAll(d => d.to_delete);
+						all_detections.RemoveAll(d => d.to_delete);
 
-					all_detections.AddRange(detections);
+						String detections_file_text = "";
 
-					foreach (Detection all_d in all_detections)
-					{
-						if (all_d.seen_times > 8)
+						foreach (Detection c in confirmed_detections)
 						{
-							all_d.detection_id = confirmed_detection_id;
+							if (update_detections_file)
+							{
+								detections_file_text += c.getString();
+							}
 
-							confirmed_detection_id++;
+							Point my_mid = positionCalculator.get_detection_on_image_cords(c.gps_location);
 
-							String filename = Path.Combine(detectionsFolder.Path + @"\" + all_d.detection_id.ToString() + ".jpg");
-
-							all_d.filename = filename;
-
-							Task t = write_to_file(detectionsFile, all_d.getString());
-
-							save_frame_crop(img_bgr, all_d.rectangle, filename);
-							confirmed_detections.Add(all_d);
-							all_d.to_delete = true;
+							if (!my_mid.IsEmpty)
+							{
+								c.draw_confirmed_detection(img_bgr, my_mid);
+							}
 						}
-						else if (all_d.seen_times > 4)
-						{
-							if (time_index - all_d.last_seen > 800)
-								all_d.to_delete = true;
-						}
-						else
-						{
-							if (time_index - all_d.last_seen > 20)
-								all_d.to_delete = true;
-						}
-					}
-
-					all_detections.RemoveAll(d => d.to_delete);
-
-					String detections_file_text = "";
-
-					foreach (Detection c in confirmed_detections)
-					{
 						if (update_detections_file)
 						{
-							detections_file_text += c.getString();
+							Task t_dets = rewrite_file(detectionsFile, detections_file_text);
 						}
 
-						Point my_mid = positionCalculator.get_detection_on_image_cords(c.gps_location);
+						time_index++;
 
-						if (!my_mid.IsEmpty)
-						{
-							c.draw_confirmed_detection(img_bgr, my_mid);
-						}
 					}
-					if (update_detections_file)
+
+					CvInvoke.Imshow("img", img_bgr);
+					CvInvoke.WaitKey(1);
+
+					ind++;
+					if (GlobalValues.PRINT_FPS && DateTimeOffset.Now.ToUnixTimeMilliseconds() - milliseconds > 1000)
 					{
-						Task t_dets = rewrite_file(detectionsFile, detections_file_text);
+						milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+						System.Diagnostics.Debug.WriteLine(ind);
+						ind = 0;
 					}
-
-					time_index++;
-
 				}
-
-				CvInvoke.Imshow("img", img_bgr);
-				CvInvoke.WaitKey(1);
-
-				ind++;
-				if (GlobalValues.PRINT_FPS && DateTimeOffset.Now.ToUnixTimeMilliseconds() - milliseconds > 1000)
-				{
-					milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-					System.Diagnostics.Debug.WriteLine(ind);
-					ind = 0;
-				}
-
 			}
 		}
 
-		private void mode_3()
+		private void mode_1()
 		{
 			int image_id = 0;
 			int ind = 0;
@@ -295,34 +305,37 @@ namespace Droniada
 					Thread.Sleep(1);
 					continue;
 				}
-				Mat mat = new Mat();
-				mat = _capture.QueryFrame();
-
-				Image<Bgr, Byte> img_bgr = mat.ToImage<Bgr, Byte>();
-
-
-				if (telemetry.altitude >= GlobalValues.MIN_ALTITUDE)
+				if (_capture != null)
 				{
+					Mat mat = new Mat();
+					mat = _capture.QueryFrame();
 
-					String filename = Path.Combine(imagesFolder.Path + @"\" + image_id.ToString() + ".png");
-					image_id++;
+					Image<Bgr, Byte> img_bgr = mat.ToImage<Bgr, Byte>();
 
-					Task t = write_to_file(telemetryFile, telemetry.getString());
 
-					img_bgr.Save(filename);
+					if (telemetry.altitude >= GlobalValues.MIN_ALTITUDE)
+					{
 
-					save_frame_crop(img_bgr, Rectangle.Empty, filename);
-				}
+						String filename = Path.Combine(imagesFolder.Path + @"\" + image_id.ToString() + ".png");
+						image_id++;
 
-				CvInvoke.Imshow("img", img_bgr);
-				CvInvoke.WaitKey(1);
+						Task t = write_to_file(telemetryFile, telemetry.getString());
 
-				ind++;
-				if (GlobalValues.PRINT_FPS && DateTimeOffset.Now.ToUnixTimeMilliseconds() - milliseconds > 1000)
-				{
-					milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-					System.Diagnostics.Debug.WriteLine(ind);
-					ind = 0;
+						img_bgr.Save(filename);
+
+						save_frame_crop(img_bgr, Rectangle.Empty, filename);
+					}
+
+					CvInvoke.Imshow("img", img_bgr);
+					CvInvoke.WaitKey(1);
+
+					ind++;
+					if (GlobalValues.PRINT_FPS && DateTimeOffset.Now.ToUnixTimeMilliseconds() - milliseconds > 1000)
+					{
+						milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+						System.Diagnostics.Debug.WriteLine(ind);
+						ind = 0;
+					}
 				}
 
 			}
@@ -387,6 +400,11 @@ namespace Droniada
 							d.to_delete = true;
 							break;
 						}
+					}
+
+					if (!d.to_delete)
+					{
+						d.last_seen = time_index;
 					}
 				}
 
@@ -464,204 +482,6 @@ namespace Droniada
 		}
 
 
-		private void mode_1()
-		{
-			int image_id = 0;
-			int ind = 0;
-			long milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-
-			while (true)
-			{
-				if (new_image)
-				{
-					new_image = false;
-
-					Image<Rgba, byte> img = new Image<Rgba, byte>(image_width, image_height);
-
-					img.Bytes = image_data;
-
-					Image<Bgr, byte> img_bgr = new Image<Bgr, byte>(image_width, image_height);
-
-					CvInvoke.CvtColor(img, img_bgr, ColorConversion.Rgba2Bgr);
-
-					if (telemetry.altitude >= GlobalValues.MIN_ALTITUDE)
-					{
-
-						String filename = Path.Combine(imagesFolder.Path + @"\" + image_id.ToString() + ".jpg");
-						image_id++;
-
-						Task t = write_to_file(telemetryFile, telemetry.getString());
-
-						img_bgr.Save(filename);
-
-						save_frame_crop(img_bgr, Rectangle.Empty, filename);
-					}
-
-					CvInvoke.Imshow("img", img_bgr);
-					CvInvoke.WaitKey(1);
-
-					ind++;
-					if (GlobalValues.PRINT_FPS && DateTimeOffset.Now.ToUnixTimeMilliseconds() - milliseconds > 1000)
-					{
-						milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-						System.Diagnostics.Debug.WriteLine(ind);
-						ind = 0;
-					}
-				}
-				else
-					Thread.Sleep(1);
-			}
-		}
-
-		private void mode_2()
-		{
-			int ind = 0;
-			long milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-
-			List<Detection> confirmed_detections = new List<Detection>();
-			List<Detection> all_detections = new List<Detection>();
-			int confirmed_detection_id = 0;
-			int time_index = 0;
-
-			while (true)
-			{
-				if (new_image)
-				{
-					new_image = false;
-
-					Image<Rgba, byte> img = new Image<Rgba, byte>(image_width, image_height);
-
-					img.Bytes = image_data;
-
-					Image<Bgr, byte> img_bgr = new Image<Bgr, byte>(image_width, image_height);
-
-					CvInvoke.CvtColor(img, img_bgr, ColorConversion.Rgba2Bgr);
-
-					if (telemetry.altitude >= GlobalValues.MIN_ALTITUDE)
-					{
-
-						List<Detection> detections = detector.detect(img_bgr);
-
-						positionCalculator.update_current_location();
-						positionCalculator.update_meters_per_pixel();
-						positionCalculator.calculate_max_meters_area();
-						positionCalculator.calculate_extreme_points();
-
-						bool update_detections_file = false;
-
-						foreach (Detection d in detections)
-						{
-							GeodesicLocation location = positionCalculator.calculate_point_lat_long(d.mid);
-							d.update_lat_lon(location);
-							d.area_m = positionCalculator.calculate_area_in_meters_2(d.area);
-							d.draw_detection(img_bgr);
-
-							foreach (Detection conf_d in confirmed_detections)
-							{
-								if (d.check_detection(conf_d))
-								{
-									conf_d.merge_detecions(d);
-									conf_d.last_seen = time_index;
-									d.to_delete = true;
-									update_detections_file = true;
-									break;
-								}
-							}
-							if (d.to_delete)
-							{
-								continue;
-							}
-
-							foreach (Detection all_d in all_detections)
-							{
-								if (d.check_detection(all_d))
-								{
-									all_d.merge_detecions(d);
-									all_d.last_seen = time_index;
-									d.to_delete = true;
-									break;
-								}
-							}
-						}
-
-						detections.RemoveAll(d => d.to_delete);
-
-						all_detections.AddRange(detections);
-
-						foreach (Detection all_d in all_detections)
-						{
-							if (all_d.seen_times > 8)
-							{
-								all_d.detection_id = confirmed_detection_id;
-
-								confirmed_detection_id++;
-
-								String filename = Path.Combine(detectionsFolder.Path + @"\" + all_d.detection_id.ToString() + ".jpg");
-
-								all_d.filename = filename;
-
-								Task t = write_to_file(detectionsFile, all_d.getString());
-
-								save_frame_crop(img_bgr, all_d.rectangle, filename);
-								confirmed_detections.Add(all_d);
-								all_d.to_delete = true;
-							}
-							else if (all_d.seen_times > 4)
-							{
-								if (time_index - all_d.last_seen > 800)
-									all_d.to_delete = true;
-							}
-							else
-							{
-								if (time_index - all_d.last_seen > 20)
-									all_d.to_delete = true;
-							}
-						}
-
-						all_detections.RemoveAll(d => d.to_delete);
-
-						String detections_file_text = "";
-
-						foreach (Detection c in confirmed_detections)
-						{
-							if (update_detections_file)
-							{
-								detections_file_text += c.getString();
-							}
-
-							Point my_mid = positionCalculator.get_detection_on_image_cords(c.gps_location);
-
-							if (!my_mid.IsEmpty)
-							{
-								c.draw_confirmed_detection(img_bgr, my_mid);
-							}
-						}
-						if (update_detections_file)
-						{
-							Task t_dets = rewrite_file(detectionsFile, detections_file_text);
-						}
-
-						time_index++;
-
-					}
-
-					CvInvoke.Imshow("img", img_bgr);
-					CvInvoke.WaitKey(1);
-
-					ind++;
-					if (GlobalValues.PRINT_FPS && DateTimeOffset.Now.ToUnixTimeMilliseconds() - milliseconds > 1000)
-					{
-						milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-						System.Diagnostics.Debug.WriteLine(ind);
-						ind = 0;
-					}
-				}
-				else
-					Thread.Sleep(1);
-			}
-		}
-
-
 		async Task create_telemetry_file(String folderName)
 		{
 			currentFolder = await storageFolder.CreateFolderAsync(folderName);
@@ -697,7 +517,7 @@ namespace Droniada
 				y1 = Math.Min(GlobalValues.CAMERA_HEIGHT, y1);
 
 				frame.ROI = new Rectangle(x, y, x1 - x, y1 - y);
-
+				//////////resize
 				frame.Save(filename);
 
 				frame.ROI = Rectangle.Empty;
@@ -710,16 +530,17 @@ namespace Droniada
 		{
 			_ = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
 			{
-				Altitude.Text = telemetry.altitude.ToString();
-				Longitude.Text = telemetry.gps_location.longitude.ToString();
-				Latitude.Text = telemetry.gps_location.latitude.ToString();
-				Yaw.Text = telemetry.attitude.yaw.ToString();
+				if (telemetry != null)
+				{
+					Altitude.Text = telemetry.altitude.ToString();
+					Longitude.Text = telemetry.gps_location.longitude.ToString();
+					Latitude.Text = telemetry.gps_location.latitude.ToString();
+					Yaw.Text = telemetry.attitude.yaw.ToString();
+					AircraftLocationChange();
+				}
 			}
 			);
 		}
-
-
-
 
 		//Callback of SDKRegistrationEvent
 		private async void Instance_SDKRegistrationEvent(SDKRegistrationState state, SDKError resultCode)
@@ -728,34 +549,7 @@ namespace Droniada
 			{
 				System.Diagnostics.Debug.WriteLine("Register app successfully.");
 
-				//Must in UI thread
-				await Dispatcher.RunAsync(CoreDispatcherPriority.High, async () =>
-				{
-					//Raw data and decoded data listener
-					if (videoParser == null && mode != 3 && mode != 4)
-					{
-						videoParser = new Parser();
-						videoParser.Initialize(delegate (byte[] data)
-						{
-							//Note: This function must be called because we need DJI Windows SDK to help us to parse frame data.
-							return DJISDKManager.Instance.VideoFeeder.ParseAssitantDecodingInfo(0, data);
-						});
-						//Set the swapChainPanel to display and set the decoded data callback.
-						videoParser.SetSurfaceAndVideoCallback(0, 0, swapChainPanel, ReceiveDecodedData);
-
-
-						DJISDKManager.Instance.VideoFeeder.GetPrimaryVideoFeed(0).VideoDataUpdated += OnVideoPush;
-					}
-					//get the camera type and observe the CameraTypeChanged event.
-					if (mode != 3 && mode != 4)
-					{
-						DJISDKManager.Instance.ComponentManager.GetCameraHandler(0, 0).CameraTypeChanged += OnCameraTypeChanged;
-						var type = await DJISDKManager.Instance.ComponentManager.GetCameraHandler(0, 0).GetCameraTypeAsync();
-
-						OnCameraTypeChanged(this, type.value);
-					}
-					setup();
-				});
+				setup();
 
 			}
 			else
@@ -765,50 +559,90 @@ namespace Droniada
 			}
 		}
 
-		//raw data
-		void OnVideoPush(VideoFeed sender, byte[] bytes)
-		{
-			videoParser.PushVideoData(0, 0, bytes, bytes.Length);
-		}
-
-		//Decode data. Do nothing here. This function would return a bytes array with image data in RGBA format.
-		async void ReceiveDecodedData(byte[] data, int width, int height)
-		{
-			image_data = data;
-			image_height = height;
-			image_width = width;
-			new_image = true;
-		}
-
-		//We need to set the camera type of the aircraft to the DJIVideoParser. After setting camera type, DJIVideoParser would correct the distortion of the video automatically.
-		private void OnCameraTypeChanged(object sender, CameraTypeMsg? value)
-		{
-			if (value != null)
-			{
-				switch (value.Value.value)
-				{
-					case CameraType.MAVIC_2_ZOOM:
-						this.videoParser.SetCameraSensor(AircraftCameraType.Mavic2Zoom);
-						break;
-					case CameraType.MAVIC_2_PRO:
-						this.videoParser.SetCameraSensor(AircraftCameraType.Mavic2Pro);
-						break;
-					default:
-						this.videoParser.SetCameraSensor(AircraftCameraType.Others);
-						break;
-				}
-
-			}
-		}
-
 		private async void OpenFolder_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
 		{
 			await Launcher.LaunchFolderAsync(currentFolder);
 		}
 
-		private void StartMission_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+
+		private void change_camera(object sender, Windows.UI.Xaml.RoutedEventArgs e)
 		{
-			StartMission.Execute(null);
+			if (mode == 1 || mode == 2)
+			{
+				if (camera_number == 0)
+				{
+					camera_number = 1;
+				}
+				else
+				{
+					camera_number = 0;
+				}
+
+				pauseThread = true;
+
+				_capture = new VideoCapture(camera_number);
+				_capture.SetCaptureProperty(CapProp.FrameWidth, 1280);
+				_capture.SetCaptureProperty(CapProp.FrameHeight, 720);
+
+				pauseThread = false;
+
+			}
+		}
+
+		/// <summary>
+		/// Map objects !!!!!!!
+		/// </summary>
+		/// 
+
+		public ICommand _setGroundStationModeEnabled;
+		public ICommand SetGroundStationModeEnabled
+		{
+			get
+			{
+
+				_setGroundStationModeEnabled = new RelayCommand(async delegate ()
+				{
+					SDKError err = await DJISDKManager.Instance.ComponentManager.GetFlightControllerHandler(0, 0).SetGroundStationModeEnabledAsync(new BoolMsg() { value = true });
+					var messageDialog = new MessageDialog(String.Format("Set GroundStationMode Enabled: {0}", err.ToString()));
+					await messageDialog.ShowAsync();
+				}, delegate () { return true; });
+
+				return _setGroundStationModeEnabled;
+			}
+		}
+
+		public ICommand _loadMission;
+		public ICommand LoadMission
+		{
+			get
+			{
+
+				_loadMission = new RelayCommand(async delegate ()
+				{
+					SDKError err = DJISDKManager.Instance.WaypointMissionManager.GetWaypointMissionHandler(0).LoadMission(mission);
+					var messageDialog = new MessageDialog(String.Format("SDK load mission: {0}", err.ToString()));
+					await messageDialog.ShowAsync();
+				}, delegate () { return true; });
+
+				return _loadMission;
+			}
+		}
+
+		public ICommand _uploadMission;
+		public ICommand UploadMission
+		{
+			get
+			{
+
+				_uploadMission = new RelayCommand(async delegate ()
+				{
+					SDKError err = await DJISDKManager.Instance.WaypointMissionManager.GetWaypointMissionHandler(0).UploadMission();
+					var messageDialog = new MessageDialog(String.Format("Upload mission to aircraft: {0}", err.ToString()));
+					await messageDialog.ShowAsync();
+				}, delegate () { return true; });
+
+				return _uploadMission;
+			}
 		}
 
 		public ICommand _startMission;
@@ -827,32 +661,408 @@ namespace Droniada
 			}
 		}
 
-		private void change_camera(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+
+		MapIcon waypointIcon = null;
+		MapIcon currentWaypointIcon = null;
+		MapElementsLayer routeLayer = new MapElementsLayer();
+		MapElementsLayer waypointLayer = new MapElementsLayer();
+		MapElementsLayer locationLayer = new MapElementsLayer();
+
+		MapElementsLayer currentWaypointLayer = new MapElementsLayer();
+		WaypointMission mission;
+		bool missionCreated = false;
+
+		BasicGeoposition currentWaypoint;
+
+		private void setup_map()
 		{
-			if (mode == 3 || mode == 4 || mode == 5)
+
+			WaypointMap.Layers.Add(waypointLayer);
+			WaypointMap.Layers.Add(currentWaypointLayer);
+			WaypointMap.Layers.Add(locationLayer);
+			WaypointMap.Layers.Add(routeLayer);
+
+			if (telemetry != null)
+				WaypointMap.Center = new Geopoint(new BasicGeoposition() {Latitude = telemetry.gps_location.latitude, Longitude = telemetry.gps_location.longitude});
+			else
+				WaypointMap.Center = new Geopoint(new BasicGeoposition() { Latitude = 52, Longitude = 17 });
+
+			
+			mapItems.ItemsSource = InitInterestPoints();
+
+
+			if (currentWaypointIcon == null)
 			{
-				if (camera_number == 0)
+				currentWaypointIcon = new MapIcon()
 				{
-					camera_number = 1;
+					Image = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/xd")),
+					NormalizedAnchorPoint = new Windows.Foundation.Point(0.5, 0.5),
+					ZIndex = 0,
+				};
+			}
+		}
+
+		private void Recenter_Map(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			WaypointMap.Center = new Geopoint(new BasicGeoposition() { Latitude = telemetry.gps_location.latitude, Longitude = telemetry.gps_location.longitude});
+		}
+
+		private List<InterestPoint> InitInterestPoints()
+		{
+			if (telemetry != null)
+			{
+				List<InterestPoint> points = new List<InterestPoint>();
+				points.Add(new InterestPoint
+				{
+					ImageSourceUri = new Uri("ms-appx:///Assets/arrow.png"),
+					Location = new Geopoint(new BasicGeoposition() { Latitude = telemetry.gps_location.latitude, Longitude = telemetry.gps_location.longitude}),
+					Rotate = new RotateTransform
+					{
+						Angle = telemetry.attitude.yaw,
+						CenterX = 15,
+						CenterY = 15
+					},
+					Translate = new TranslateTransform
+					{
+						X = 0,
+						Y = 0
+					}
+				});
+
+				return points;
+			}
+			return null;
+		}
+
+		private void AircraftLocationChange()
+		{
+			/*var points = mapItems.ItemsSource as List<InterestPoint>;
+			points[0].Rotate.Angle = telemetry.attitude.yaw;
+
+			var location = new BasicGeoposition() { Latitude = 0, Longitude = 0 };
+
+			points[0].Location = new Geopoint(location);*/
+
+			mapItems.ItemsSource = InitInterestPoints();
+		}
+
+		private void init_mission(double autoFlightSpeed, WaypointMissionFinishedAction action, WaypointMissionHeadingMode heading_mode)
+		{
+			missionCreated = true;
+			mission = new WaypointMission()
+			{
+				waypointCount = 0,
+				maxFlightSpeed = 15,
+				autoFlightSpeed = autoFlightSpeed,
+				finishedAction = action,
+				headingMode = heading_mode,
+				flightPathMode = WaypointMissionFlightPathMode.NORMAL,
+				gotoFirstWaypointMode = WaypointMissionGotoFirstWaypointMode.SAFELY,
+				exitMissionOnRCSignalLostEnabled = false,
+				pointOfInterest = new LocationCoordinate2D()
+				{
+					latitude = 0,
+					longitude = 0
+				},
+				gimbalPitchRotationEnabled = false,
+				repeatTimes = 0,
+				missionID = 0,
+				waypoints = new List<Waypoint>()
+		};
+
+		}
+
+
+
+		private Waypoint InitDumpWaypoint(double latitude, double longitude, double altitude, WaypointTurnMode turnMode, int heading, double speed)
+		{
+			Waypoint waypoint = new Waypoint()
+			{
+				location = new LocationCoordinate2D() { latitude = latitude, longitude = longitude },
+				altitude = altitude,
+				gimbalPitch = -90,
+				turnMode = turnMode,
+				heading = heading,
+				actionRepeatTimes = 1,
+				actionTimeoutInSeconds = 900,
+				cornerRadiusInMeters = 0.2,
+				speed = speed,
+				shootPhotoTimeInterval = -1,
+				shootPhotoDistanceInterval = -1,
+				waypointActions = new List<WaypointAction>()
+			};
+			return waypoint;
+		}
+
+
+		private void RedrawCurrentWaypoint()
+		{
+
+
+			if (currentWaypointLayer.MapElements.Count == 0)
+			{
+				currentWaypointIcon.Location = new Geopoint(new BasicGeoposition() { Latitude = currentWaypoint.Latitude, Longitude = currentWaypoint.Longitude });
+				currentWaypointLayer.MapElements.Add(currentWaypointIcon);
+			}
+			else
+			{
+				currentWaypointIcon.Location = new Geopoint(new BasicGeoposition() { Latitude = currentWaypoint.Latitude, Longitude = currentWaypoint.Longitude });
+			}
+		}
+
+
+	private void RedrawWaypoint()
+		{
+
+			List<BasicGeoposition> waypointPositions = new List<BasicGeoposition>();
+
+			for (int i = 0; i < mission.waypoints.Count; ++i)
+			{
+				if (waypointLayer.MapElements.Count == i)
+				{
+					MapIcon waypointIcon = new MapIcon()
+					{
+						Image = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/waypoint.png")),
+						NormalizedAnchorPoint = new Windows.Foundation.Point(0.5, 0.5),
+						ZIndex = 0,
+					};
+					waypointLayer.MapElements.Add(waypointIcon);
+				}
+
+				var geolocation = new BasicGeoposition() { Latitude = mission.waypoints[i].location.latitude, Longitude = mission.waypoints[i].location.longitude };
+				(waypointLayer.MapElements[i] as MapIcon).Location = new Geopoint(geolocation);
+				waypointPositions.Add(geolocation);
+			}
+
+			if (waypointPositions.Count >= 2)
+			{
+				if (routeLayer.MapElements.Count == 0)
+				{
+					var polyline = new MapPolyline
+					{
+						StrokeColor = Windows.UI.Color.FromArgb(255, 0, 255, 0),
+						Path = new Geopath(waypointPositions),
+						StrokeThickness = 2
+					};
+					routeLayer.MapElements.Add(polyline);
 				}
 				else
 				{
-					camera_number = 0;
+					var waypointPolyline = routeLayer.MapElements[0] as MapPolyline;
+					waypointPolyline.Path = new Geopath(waypointPositions);
 				}
+			}
 
 
-				pauseThread = true;
 
-				_capture = new VideoCapture(camera_number);
-				_capture.SetCaptureProperty(CapProp.FrameWidth, 1280);
-				_capture.SetCaptureProperty(CapProp.FrameHeight, 720);
 
-				pauseThread = false;
-				//Thread trd = new Thread(new ThreadStart(this.main_loop));
-				//trd.IsBackground = true;
-				//trd.Start();
+			/*for (int i = 0; i < mission.waypoints.Count; ++i)
+			{
+				waypointLayer.MapElements.Add(waypointIcon);
+				var geolocation = new BasicGeoposition() { Latitude = mission.waypoints[i].location.latitude, Longitude = mission.waypoints[i].location.longitude };
+				(waypointLayer.MapElements[i] as MapIcon).Location = new Geopoint(geolocation);
+				waypointPositions.Add(geolocation);
+			}
 
+
+			if (waypointPositions.Count >= 2)
+			{
+				var polyline = new MapPolyline
+				{
+					StrokeColor = Windows.UI.Color.FromArgb(255, 255, 0, 0),
+					Path = new Geopath(waypointPositions),
+					StrokeThickness = 2
+				};
+				routeLayer.MapElements.Add(polyline);
+			}*/
+
+		
+
+		}
+
+		private void UploadMission_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			UploadMission.Execute(null);
+		}
+
+		private void LoadMission_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			LoadMission.Execute(null);
+		}
+
+		private void SetGround_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			SetGroundStationModeEnabled.Execute(null);
+		}
+
+		private void WaypointMap_MapTapped(MapControl sender, MapInputEventArgs args)
+		{
+			currentWaypoint.Latitude = args.Location.Position.Latitude;
+			currentWaypoint.Longitude = args.Location.Position.Longitude;
+
+			MapLat.Text = " " + currentWaypoint.Latitude.ToString();
+			MapLon.Text = " " + currentWaypoint.Longitude.ToString();
+
+			RedrawCurrentWaypoint();
+		}
+
+		private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
+		{
+			if (System.Text.RegularExpressions.Regex.IsMatch(altitudeTextBox.Text, "[^0-9]"))
+			{
+				altitudeTextBox.Text = altitudeTextBox.Text.Remove(altitudeTextBox.Text.Length - 1);
 			}
 		}
+
+		private void SpeedTextBox_TextChanged(object sender, TextChangedEventArgs e)
+		{
+			if (System.Text.RegularExpressions.Regex.IsMatch(speedTextBox.Text, "[^0-9]"))
+			{
+				speedTextBox.Text = speedTextBox.Text.Remove(speedTextBox.Text.Length - 1);
+			}
+			else
+			{
+				int number;
+
+				bool success = Int32.TryParse(speedTextBox.Text, out number);
+
+				if (success && number > 15)
+				{
+					speedTextBox.Text = "15";
+				}
+			}
+		}
+
+
+		private void Init_Mission_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			WaypointMissionFinishedAction finishedAction = (WaypointMissionFinishedAction)Enum.Parse(typeof(WaypointMissionFinishedAction), finishedCombo.SelectedIndex.ToString());
+			WaypointMissionHeadingMode headingMode = (WaypointMissionHeadingMode)Enum.Parse(typeof(WaypointMissionHeadingMode), ((ComboBoxItem)headingCombo.SelectedItem).Tag.ToString());
+
+			init_mission(Int32.Parse(speedTextBox.Text), finishedAction, headingMode);
+
+			int heading;
+
+			bool success = Int32.TryParse(headingTextBox.Text, out heading);
+
+			if (success && heading > 180)
+			{
+				heading = heading - 360;
+			}
+
+			WaypointTurnMode turnMode = (WaypointTurnMode)Enum.Parse(typeof(WaypointTurnMode), turnCombo.SelectedIndex.ToString());
+
+			Waypoint waypoint = InitDumpWaypoint(telemetry.gps_location.latitude + 0.00003, telemetry.gps_location.longitude, Double.Parse(altitudeTextBox.Text), turnMode, heading, Int32.Parse(speedTextBox.Text));
+
+			mission.waypoints.Add(waypoint);
+
+			RedrawWaypoint();
+
+			int a = 0;
+		}
+
+		private void Add_Waypoint_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			if (missionCreated)
+			{
+				var lastWaypoint = mission.waypoints[mission.waypoints.Count - 1];
+
+				var altitude = Double.Parse(altitudeTextBox.Text);
+
+				if (currentWaypoint.Latitude != lastWaypoint.location.latitude || currentWaypoint.Longitude != lastWaypoint.location.longitude
+					|| altitude != lastWaypoint.altitude)
+				{
+					int heading;
+
+					bool success = Int32.TryParse(headingTextBox.Text, out heading);
+
+					if (success && heading > 180)
+					{
+						heading = heading - 360;
+					}
+
+					WaypointTurnMode turnMode = (WaypointTurnMode)Enum.Parse(typeof(WaypointTurnMode), turnCombo.SelectedIndex.ToString());
+
+					Waypoint waypoint = InitDumpWaypoint(currentWaypoint.Latitude, currentWaypoint.Longitude, altitude, turnMode, heading, Int32.Parse(speedTextBox.Text));
+
+					mission.waypoints.Add(waypoint);
+
+					MapLat.Text = "";
+					MapLon.Text = "";
+
+
+					RedrawWaypoint();
+				}
+			}
+		}
+
+		private void HeadingTextBox_TextChanged(object sender, TextChangedEventArgs e)
+		{
+			if (System.Text.RegularExpressions.Regex.IsMatch(headingTextBox.Text, "[^0-9]"))
+			{
+				headingTextBox.Text = headingTextBox.Text.Remove(headingTextBox.Text.Length - 1);
+			}
+			else
+			{
+				int number;
+
+				bool success = Int32.TryParse(headingTextBox.Text, out number);
+
+				if (success && number > 360)
+				{
+					speedTextBox.Text = "360";
+				}
+				else if (success && number < 0)
+				{
+					speedTextBox.Text = "0";
+				}
+			}
+		}
+
+		private void ResendData_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			telemetry.resend_data();
+		}
+
+		private void Button_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			SetGroundStationModeEnabled.Execute(null);
+		}
+
+		private void Button_Click_1(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			Waypoint waypoint = InitDumpWaypoint(telemetry.gps_location.latitude + 0.00003, telemetry.gps_location.longitude, mission.waypoints[0].altitude, mission.waypoints[0].turnMode, mission.waypoints[0].heading, mission.waypoints[0].speed);
+
+			mission.waypoints[0] = waypoint;
+			LoadMission.Execute(null);
+		}
+
+		private void Button_Click_2(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			UploadMission.Execute(null);
+		}
+
+		private void Button_Click_3(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			StartMission.Execute(null);
+		}
+
+		private void StartMission_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+		{
+			StartMission.Execute(null);
+		}
+
+
 	}
+
+	public class InterestPoint
+	{
+		public Uri ImageSourceUri { get; set; }
+		public Geopoint Location { get; set; }
+		public RotateTransform Rotate { get; set; }
+		public TranslateTransform Translate { get; set; }
+		public Point CenterPoint { get; set; }
+	}
+
+
 }

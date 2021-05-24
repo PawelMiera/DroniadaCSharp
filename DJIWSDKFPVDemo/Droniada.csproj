@@ -95,6 +95,7 @@
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Client.cs" />
     <Compile Include="Command\RelayCommand.cs" />
     <Compile Include="Detection.cs" />
     <Compile Include="Detector.cs" />
@@ -110,6 +111,9 @@
   <ItemGroup>
     <Content Include="1.jpg" />
     <Content Include="2.jpg" />
+    <Content Include="Assets\arrow.png" />
+    <Content Include="Assets\phantom.svg" />
+    <Content Include="Assets\waypoint.png" />
     <Content Include="avcodec-56.dll" />
     <Content Include="avformat-56.dll" />
     <Content Include="avutil-54.dll" />
@@ -154,12 +158,6 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\DJIWindowsSDK\DJIWindowsSDK.dll</HintPath>
     </Reference>
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\DJIVideoParser\DJIVideoParser.vcxproj">
-      <Project>{5f8b4a30-b8d1-46b5-be32-aee3c899e3bf}</Project>
-      <Name>DJIVideoParser</Name>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="saved_detection_images\" />
